@@ -1,0 +1,38 @@
+function mixRedTraces(nTrials,sumType)
+
+%mixes two sets of red traces (different proteins, or separate sets of
+%proteins, like rejected vs candidate events) and determines the
+%variability of sum of absolute differences (sumType=1)or sum of squares 
+%(sumType=2) estimated on nTrials trials where the two datasets are
+%randomly mixed.
+
+[f1,p1] = uigetfile('*.xls','Data file with fluo measures');
+if ~f1,return,end
+
+ev1 = xlsread([p1,f1],-1);
+N1 = size(ev1,1);
+
+[f2,p2] = uigetfile('*.xls','Data file with fluo measures');
+if ~f2,return,end
+
+ev2 = xlsread([p2,f2],-1);
+N2 = size(ev2,1);
+
+realsum = ssum(ev1,ev2,sumType)
+
+events = [ev1;ev2];
+randsums = zeros(1,nTrials);
+
+for i=1:nTrials
+    j = randperm(N1+N2);
+    randEv = events(j,:);
+    randsums(i) = ssum(events(1:N1,:),events(N1+1:end,:),sumType);
+end
+
+function outsum = ssum(av1,av2,t)
+dav = mean(av1)-mean(av2);
+if t==1
+    outsum = sum(abs(dav));
+elseif t==2
+    outsum = sum(dav.*dav);
+end

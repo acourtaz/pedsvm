@@ -1,0 +1,362 @@
+function playBatch(action)
+
+if nargin == 0
+   [stk,stkd] = uigetfile('*.stk','Choose a Stack');
+   if ~stk,return,end
+   frame = 1;
+   M = stkread(stk,stkd);
+   figure
+   map = gray(256);
+   
+   %controls inherited from play.m
+   uicontrol('string','Stop','callback','playBatch goto',...
+       'position',[40,30,45,15])
+   uicontrol('callback','playBatch fullforward','string',...
+      'Play -->','position',[130,30,45,15])
+   uicontrol('callback','playBatch fullbackward','string',...
+      '<-- Play','position',[85,30,45,15])
+   high = double(max(max(max(M(:,:,1:end-1)))));
+   low = double(min(min(min(M(:,:,1:end-1)))));
+   uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low,'max',high-3,...
+      'value',low,...
+      'position',[240,15,315,15],'tag','scalelow')
+   uicontrol('style','text','position',[210,15,30,15],'tag','low_text')
+       %'fontsize',5)
+   uicontrol('style','text','position',[175,15,35,15],'string','Low')
+   uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low+3,'max',high,...
+      'value',high,...
+      'position',[240,30,315,15],'tag','scalehigh')
+   uicontrol('style','text','position',[210,30,30,15],'tag','high_text')
+       %'fontsize',5)
+   uicontrol('style','text','position',[175,30,35,15],'string','High')
+   uicontrol('callback','playBatch goto','string','frame#',...
+      'style','slider',...
+      'position',[275,0,280,15],...
+      'max',size(M,3),...
+      'min',1,...
+      'value',1,...
+      'sliderstep',[1/(size(M,3)-1),10/(size(M,3)-1)],'tag','frame#');
+   uicontrol('style','text','position',[240,0,35,15],'string','Frame')
+   
+   % controls specific for playBatch.m
+   uicontrol('style','text','position',[20,160,70,15],'string','EVENT')
+   uicontrol('callback','playBatch previousEvent','string','PREVIOUS',...
+       'position',[20,140,70,15])
+   uicontrol('callback','playBatch nextEvent','string','NEXT',...
+       'position',[20,125,70,15])
+   uicontrol('style','text','string','#','position',[20,110,10,15])
+   a = strfind(stk,'_');
+   a = a(size(a,2))+1;
+   b = strfind(stk,'.');
+   b = b(size(b,2))-1;
+   uicontrol('style','edit','tag','EvNumber','string',stk(a:b),...
+       'position',[30,110,40,15])
+   uicontrol('string','Go','callback','playBatch gotoEvent',...
+       'position',[70,110,20,15])
+   %%%
+   
+   set(gcf,'UserData',M,'keypressfcn','playBatch key','doublebuffer','on'...
+      ,'colormap',map,'tag',[stkd,stk])
+   u = image(M(:,:,frame),'cdatamapping','scaled','tag','movi');
+   set(gca,'clim',[low,high],'tag','moviaxis')
+   h = title([stk,' Frame # = ',num2str(frame)],...
+      'interpreter','none');
+   set(h,'userdata',stk)
+   mzoom on
+   axis image
+   pixvalm
+   scale
+   goto
+else
+   eval(action)
+end
+
+function scale
+children = get(gcf,'children');
+low = round(get(findobj(children,'tag','scalelow'),'value'));
+high = round(get(findobj(children,'tag','scalehigh'),'value'));
+minlow = get(findobj(children,'tag','scalelow'),'min');
+maxhigh = get(findobj(children,'tag','scalehigh'),'max');
+if high == minlow+1
+   high = high +1;
+end
+if low == maxhigh-1
+   low = low-1;
+end
+
+set(gca,'clim',[low,high])
+set(findobj(children,'tag','scalelow'),'max',high-1,...
+   'sliderstep',[1/(high-1-minlow),25/(high-1-minlow)],...
+   'value',low)
+set(findobj(children,'tag','low_text'),'string',num2str(low));
+set(findobj(children,'tag','scalehigh'),'min',low+1,...
+   'sliderstep',[1/(maxhigh-(low+1)),25/(maxhigh - (low+1))],...
+   'value',high)
+set(findobj(children,'tag','high_text'),'string',num2str(high));
+
+function goto
+M = get(gcf,'userdata');
+children = get(gcf,'children');
+frame = round(get(findobj(children,'tag','frame#'),'value'));
+global stop
+stop = 1;
+img = M(:,:,frame);
+set(findobj(children,'tag','movi'),'cdata',img)
+tit = get(gca,'title');
+stk = get(tit,'userdata');
+title([stk,' Frame # = ',num2str(frame)]);
+
+
+function fullbackward
+M = get(gcf,'userdata');
+children = get(gcf,'children');
+current_frame = round(get(findobj(children,'tag','frame#'),'value'));
+global stop
+stop = 0;
+nframes = size(M,3);
+for frame = current_frame:-1:1
+   if stop
+      break
+   end
+   set(findobj(children,'type','image'),'cdata',M(:,:,frame))
+   set(findobj(children,'tag','frame#'),'value',frame)
+   drawnow
+end
+goto
+
+function fullforward
+M = get(gcf,'userdata');
+children = get(gcf,'children');
+current_frame = round(get(findobj(children,'tag','frame#'),'value'));
+global stop
+stop = 0;
+nframes = size(M,3);
+for frame = current_frame:nframes
+   if stop
+      break
+   end
+   set(findobj(children,'type','image'),'cdata',M(:,:,frame))
+   set(findobj(children,'tag','frame#'),'value',frame)
+   drawnow
+end
+goto
+
+function key
+M = get(gcf,'userdata');
+children = get(gcf,'children');
+frame = round(get(findobj(children,'tag','frame#'),'value'));
+global stop
+stop = 1;
+if get(gcf,'currentcharacter') == '.'
+   if frame < size(M,3)
+      frame = frame+1;
+   end
+end
+if get(gcf,'currentcharacter') == ','
+   if frame>1
+      frame = frame-1;
+   end
+end
+set(findobj(children,'tag','frame#'),'value',frame)
+goto
+
+function previousEvent
+%finds the name of the previous event file
+event = get(gcf,'tag');
+a = strfind(event,'_');
+a = a(size(a,2))+1;
+b = strfind(event,'.');
+b = b(size(b,2))-1;
+numEv = str2num(event(a:b));
+numEv = numEv-1;
+while (numEv > 0) ...
+        & (exist([event(1:a-1),num2str(numEv),event(b+1:size(event,2))]) == 0)
+    numEv = numEv-1;
+end
+%if this is the first event of the directory, nothing happens
+if numEv <= 0,return,end
+%redraws in the same window the new event, starting at frame 1
+event = [event(1:a-1),num2str(numEv),event(b+1:size(event,2))];
+c = strfind(event,'\');
+c = c(size(c,2));
+stkd = event(1:c); stk = event(c+1:size(event,2));
+frame = 1;
+M = stkread(stk,stkd);
+map = gray(256);
+high = double(max(max(max(M(:,:,1:end-1)))));
+low = double(min(min(min(M(:,:,1:end-1)))));
+%sets new controls for frame # and grey scale
+delete(findobj(gcf,'tag','scalelow'))
+delete(findobj(gcf,'tag','scalehigh'))
+delete(findobj(gcf,'tag','frame#'))
+delete(findobj(gcf,'tag','EvNumber'))
+uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low,'max',high-3,...
+      'value',low,...
+      'position',[240,15,315,15],'tag','scalelow')
+uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low+3,'max',high,...
+      'value',high,...
+      'position',[240,30,315,15],'tag','scalehigh')
+uicontrol('callback','playBatch goto','string','frame#','style','slider',...
+      'position',[275,0,280,15],...
+      'max',size(M,3),...
+      'min',1,...
+      'value',1,...
+      'sliderstep',[1/(size(M,3)-1),10/(size(M,3)-1)],'tag','frame#')
+uicontrol('style','edit','tag','EvNumber','string',num2str(numEv),...
+      'position',[30,110,40,15])
+set(gcf,'UserData',M,'keypressfcn','playBatch key','doublebuffer','on'...
+      ,'colormap',map,'tag',[stkd,stk])
+u = image(M(:,:,frame),'cdatamapping','scaled','tag','movi');
+set(gca,'clim',[low,high],'tag','moviaxis')
+h = title([stk,' Frame # = ',num2str(frame)],...
+     'interpreter','none');
+set(h,'userdata',stk)
+mzoom on
+axis image
+pixvalm
+scale
+goto
+
+function nextEvent
+%Warning: there is a maximum number of events set to MaxEvent
+%finds the name of the next event file
+MaxEvent = 2000;
+event = get(gcf,'tag');
+a = strfind(event,'_');
+a = a(size(a,2))+1;
+b = strfind(event,'.');
+b = b(size(b,2))-1;
+numEv = str2num(event(a:b));
+numEv = numEv+1;
+while (numEv < MaxEvent) ...
+        & (exist([event(1:a-1),num2str(numEv),event(b+1:size(event,2))]) == 0)
+    numEv = numEv+1;
+end
+%if this is the first event of the directory, nothing happens
+if numEv >= MaxEvent,return,end
+%redraws in the same window the new event, starting at frame 1
+event = [event(1:a-1),num2str(numEv),event(b+1:size(event,2))];
+c = strfind(event,'\');
+c = c(size(c,2));
+stkd = event(1:c); stk = event(c+1:size(event,2));
+frame = 1;
+M = stkread(stk,stkd);
+map = gray(256);
+high = double(max(max(max(M(:,:,1:end-1)))));
+low = double(min(min(min(M(:,:,1:end-1)))));
+%sets new controls for frame # and grey scale
+delete(findobj(gcf,'tag','scalelow'))
+delete(findobj(gcf,'tag','scalehigh'))
+delete(findobj(gcf,'tag','frame#'))
+delete(findobj(gcf,'tag','EvNumber'))
+uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low,'max',high-3,...
+      'value',low,...
+      'position',[240,15,315,15],'tag','scalelow')
+uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low+3,'max',high,...
+      'value',high,...
+      'position',[240,30,315,15],'tag','scalehigh')
+uicontrol('callback','playBatch goto','string','frame#','style','slider',...
+      'position',[275,0,280,15],...
+      'max',size(M,3),...
+      'min',1,...
+      'value',1,...
+      'sliderstep',[1/(size(M,3)-1),10/(size(M,3)-1)],'tag','frame#')
+uicontrol('style','edit','tag','EvNumber','string',num2str(numEv),...
+      'position',[30,110,40,15])
+set(gcf,'UserData',M,'keypressfcn','playBatch key','doublebuffer','on'...
+      ,'colormap',map,'tag',[stkd,stk])
+u = image(M(:,:,frame),'cdatamapping','scaled','tag','movi');
+set(gca,'clim',[low,high],'tag','moviaxis')
+h = title([stk,' Frame # = ',num2str(frame)],...
+     'interpreter','none');
+set(h,'userdata',stk)
+mzoom on
+axis image
+pixvalm
+scale
+goto
+
+function gotoEvent
+%Shows the event listed in the edit window (tagged EvNumber)
+%If the ministack does not exist, it will take the next event after the 
+%selected event number. If it is after the last event, it will go to this
+%last event.
+%Warning: as for nextEvent, there is a maximum number of events, MaxEvent
+MaxEvent = 2000;
+event = get(gcf,'tag');
+children = get(gcf,'children');
+numEvInit = str2num(get(findobj(children,'tag','EvNumber'),'string'));
+a = strfind(event,'_');
+a = a(size(a,2));
+b = strfind(event,'.');
+b = b(size(b,2));
+numEv = numEvInit;
+while (numEv < MaxEvent) ...
+        & (exist([event(1:a),num2str(numEv),event(b:end)]) == 0)
+    numEv = numEv+1;
+end
+if numEv >= MaxEvent
+    numEv = MaxEvent;
+    while (numEv > 0) ...
+        & (exist([event(1:a),num2str(numEv),event(b:end)]) == 0)
+        numEv = numEv-1;
+    end
+end
+if numEv <= 0,return,end
+%redraws in the same window the new event, starting at frame 1
+event = [event(1:a),num2str(numEv),event(b:end)];
+c = strfind(event,'\');
+c = c(size(c,2));
+stkd = event(1:c); stk = event(c+1:size(event,2));
+frame = 1;
+M = stkread(stk,stkd);
+map = gray(256);
+high = double(max(max(max(M(:,:,1:end-1)))));
+low = double(min(min(min(M(:,:,1:end-1)))));
+%sets new controls for frame # and grey scale
+delete(findobj(gcf,'tag','scalelow'))
+delete(findobj(gcf,'tag','scalehigh'))
+delete(findobj(gcf,'tag','frame#')) 
+delete(findobj(gcf,'tag','EvNumber'))
+uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low,'max',high-3,...
+      'value',low,...
+      'position',[240,15,315,15],'tag','scalelow')
+uicontrol('style','slider',...
+      'callback','playBatch scale',...
+      'min',low+3,'max',high,...
+      'value',high,...
+      'position',[240,30,315,15],'tag','scalehigh')
+uicontrol('callback','playBatch goto','string','frame#','style','slider',...
+      'position',[275,0,280,15],...
+      'max',size(M,3),...
+      'min',1,...
+      'value',1,...
+      'sliderstep',[1/(size(M,3)-1),10/(size(M,3)-1)],'tag','frame#')
+uicontrol('style','edit','tag','EvNumber','string',num2str(numEv),...
+       'position',[30,110,40,15])
+set(gcf,'UserData',M,'keypressfcn','playBatch key','doublebuffer','on'...
+      ,'colormap',map,'tag',[stkd,stk])
+u = image(M(:,:,frame),'cdatamapping','scaled','tag','movi');
+set(gca,'clim',[low,high],'tag','moviaxis')
+h = title([stk,' Frame # = ',num2str(frame)],...
+     'interpreter','none');
+set(h,'userdata',stk)
+mzoom on
+axis image
+pixvalm
+scale
+goto

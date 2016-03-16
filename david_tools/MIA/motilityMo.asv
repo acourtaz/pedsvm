@@ -1,0 +1,227 @@
+function motility(action)
+
+if nargin == 0
+    
+    [stk,stkd] = uigetfile('*.stk','Choose a growth cone movie');
+    if ~stk,return,end
+    Movi = stkread(stk,stkd);
+
+    maxIm = max(Movi,[],3);
+%shows the image of the maximum projection and uses it as input for
+%background
+    maxIm = max(Movi,[],3);
+    low = min(min(maxIm));
+    high = max(max(maxIm));
+    offset = max([max(max(maxIm)),1000]); %offset value used for subtracted movie
+
+    map = gray(256);
+    map(end,:) = [1 0 0];
+    figure('name',stk)
+    set(gcf,'UserData',Movi,'colormap',map,'tag',stk);
+    image(maxIm,'cdatamapping','scaled','tag','maximage')
+    %set(gca,'tag','axisMax')
+    uicontrol('position',[20,10,50,15],'style','text','string','Threshold')
+    uicontrol('position',[70,10,45,15],'style','text','tag','thresh_text')
+    uicontrol('position',[115,10,400,20],'style','slider',...
+        'callback','motility scale','tag','scaleth',...
+        'min',low,'max',high,'value',high)
+    uicontrol('position',[10,120,110,20],'string','Select Background',...
+        'callback','motility selectOn','style','togglebutton',...
+        'min',0,'max',1,'value',0,'tag','selToggle')
+    uicontrol('position',[10,90,80,20],'string','Motility',...
+        'callback','motility MI');
+    uicontrol('position',[10,70,80,20],'string','shape',...
+        'callback','motility shape');
+    uicontrol('position',[10,50,90,20],'string','Create Mask',...
+        'callback','motility mask');
+        
+    mzoom on
+    axis image
+    pixvalm
+    scale
+else
+    eval(action)
+end
+
+function scale
+children = get(gcf,'children');
+threshold = round(get(findobj(children,'tag','scaleth'),'value'));
+low = get(findobj(children,'tag','scaleth'),'min');
+high = get(findobj(children,'tag','scaleth'),'max');
+if threshold == low+1
+    threshold = threshold+1;
+end
+if threshold == high-1
+    threshold = threshold -1;
+end
+set(gca,'clim',[low,threshold])
+set(findobj(children,'tag','thresh_text'),'string',num2str(threshold));
+set(findobj(children,'tag','scaleth'),'value',threshold,...
+    'sliderstep',[1/(high-low),10/(high-low)]);
+
+function selectOn
+children = get(gcf,'children');
+selectStatus = get(findobj(children,'tag','selToggle'),'value');
+if selectStatus == 0
+    mzoom on
+    pixvalm
+else
+    mzoom off
+    delete(findobj(get(gca,'children'),'type','line'))
+    [Xback,Yback,Back,rect] = imcrop;
+    rect = round(rect);
+    bx = rect(1); by = rect(2); bw = rect(3); bh = rect(4);
+    X = [bx,bx,bx+bw,bx+bw,bx];
+    Y = [by,by+bh,by+bh,by,by];
+    line('XData',X,'YData',Y,'color','g')
+    set(findobj('tag','selToggle'),'UserData',rect);
+end
+
+function MI
+children = get(gcf,'children');
+
+rect = get(findobj(children,'tag','selToggle'),'UserData');
+if isempty(rect)
+    errordlg('No background region is selected')
+    %return
+else
+    bx = rect(1); by = rect(2); bw = rect(3); bh = rect(4);
+    threshold1 = get(findobj(children,'tag','scaleth'),'value');
+    threshold = numinputdlg({''},'Threshold value',1,threshold1);
+    Movi = get(gcf,'userdata');
+    maxIm = max(Movi,[],3);
+    length = size(Movi,3);
+    
+%makes the mask to calculate average fluorescence and std
+    C_mask = maxIm > threshold;
+    C_mask = imfill(C_mask,'holes');
+    C_label = bwlabel(C_mask);
+    S = regionprops(C_label,'Area');
+    [u,v] = max([S.Area]);
+    C_mask = C_label == v;
+    C_mask_area = sum(sum(C_mask));
+
+    offset = 1000;
+    for i=1:length-1
+        cFrame = double(Movi(:,:,i+1));
+        AF_Cone = sum(sum(cFrame.*C_mask))/C_mask_area;
+        AF_back = sum(sum(cFrame(by:by+bh,bx:bx+bw)))/((bw+1)*(bh+1));
+        avFluo(i) = AF_Cone-AF_back;
+    
+        dFrame = double(offset+Movi(:,:,i+1)-Movi(:,:,i));
+        dFrame_Back = dFrame(by:by+bh,bx:bx+bw);
+        SD_back = std(dFrame_Back(:));
+        dFrame_Cone = dFrame.*C_mask;
+        dFrame_Cone = sort(dFrame_Cone(:));
+        SD_Cone = std(dFrame_Cone(end-C_mask_area+1:end));
+        Motility(i) = sqrt(SD_Cone^2-SD_back^2)/(AF_Cone-AF_back);
+    end
+    avFluo = avFluo';
+    Motility = Motility';
+    stk = get(gcf,'tag');
+    xlfilename = [stk(1:end-4),'_MI.xls'];
+    xlswrite(xlfilename,{'Fluorescence'},1,'A1');
+    xlswrite(xlfilename,avFluo,1,'A2');
+    xlswrite(xlfilename,{'Motility'},1,'B1');
+    xlswrite(xlfilename,Motility,1,'B2');
+    figure('name',[stk(1:end-4),'_motility'])
+    plot(Motility)
+    xlabel('frame #')
+    ylabel('motility index')
+    figure('name',[stk(1:end-4),'_avFluo'])
+    plot(avFluo)
+    xlabel('frame #')
+    ylabel('average fluorescence')
+end
+
+function shape
+children = get(gcf,'children');
+threshold1 = get(findobj(children,'tag','scaleth'),'value');
+threshold = numinputdlg({''},'Threshold value',1,threshold1);
+Movi = get(gcf,'userdata');
+stk = get(gcf,'tag');
+length = size(Movi,3);
+binMovi = Movi > threshold;
+filledCone = zeros(size(Movi));
+boundCone = zeros(size(Movi));
+areaCone = zeros(size(Movi,3),1);
+areaCone = squeeze(areaCone);
+perimCone = zeros(size(Movi,3),1);
+perimCone = squeeze(perimCone);
+for i=1:length
+    binImFill = imfill(binMovi(:,:,i),'holes');
+    binLabel = bwlabel(binImFill);
+    S = regionprops(binLabel,'Area');
+    [cone,numCone] = max([S.Area]);
+    coneIm = (binLabel == numCone);
+    filledCone(:,:,i) = coneIm;
+    areaCone(i) = bwarea(coneIm);
+    conePerim = bwperim(coneIm);
+    boundCone(:,:,i) = conePerim;
+    perimCone(i) = sum(sum(conePerim));
+end
+areaCone = double(areaCone);
+perimCone = double(perimCone);
+shape = perimCone.^2./(4*pi.*areaCone);
+
+filledCone = uint8(filledCone);
+[stkarea,stkd] = uiputfile([stk(1:end-4),'_area.stk'],'Area Movie');
+if stkarea
+    stkwrite(filledCone,stkarea,stkd);
+end
+
+boundCone = uint8(boundCone);
+[stkperim,stkd] = uiputfile([stk(1:end-4),'_perim.stk'],'Perimeter Movie');
+if stkperim
+    stkwrite(boundCone,stkperim,stkd);
+end
+
+xlfilename = [stk(1:end-4),'_MI.xls'];
+xlswrite(xlfilename,{'Area'},2,'A1');
+xlswrite(xlfilename,areaCone,2,'A2');
+xlswrite(xlfilename,{'Perimeter'},2,'B1');
+xlswrite(xlfilename,perimCone,2,'B2');
+xlswrite(xlfilename,{'Shape'},2,'C1');
+xlswrite(xlfilename,shape,2,'C2');
+figure('name',[stk(1:end-4),'_shape'])
+plot(shape)
+xlabel('frame #')
+ylabel('shape index')
+
+function mask
+
+children = get(gcf,'children');
+threshold = get(findobj(children,'tag','scaleth'),'value');
+Movi = get(gcf,'userdata');
+maxIm = max(Movi,[],3);
+length = size(Movi,3);
+stk = get(gcf,'tag');
+    
+%makes the mask to calculate average fluorescence and std
+C_mask = maxIm > threshold;
+%C_mask = imfill(C_mask,'holes');
+C_label = bwlabel(C_mask);
+S = regionprops(C_label,'Area');
+[u,v] = max([S.Area]);
+C_mask = C_label == v;
+figure('name','mask','colormap',gray(4))
+image(C_mask,'cdatamapping','scaled')
+axis image
+
+c = strfind(f1,'_');
+c
+
+end
+
+%if isempty(c)
+  %  [f,p] = uiputfile([stk(1:end-4),'_mask.txt'],...
+  %  'Where to put the mask file?');
+%else
+  %  [f,p] = uiputfile([stk(1:c-1),'_mask.txt'],...
+  %    'Where to put the mask file?');
+%end
+
+%if ischar(f) && ischar(p)
+  %  dlmwrite([p,f],C_mask,'\t')
+%end
+

@@ -1,0 +1,67 @@
+function fbm = freqByMask(varargin)
+
+% Calculates #ev/min/µm² in a given freq.xls file
+
+if nargin == 0
+    [fmask,pmask] = uigetfile('*.txt','Mask file');
+    ffreq = uigetfile('*.xlsx','Freqency data file');
+    if ~fmask ,return
+    elseif ~ffreq ,return
+    end
+    mask = dlmread([pmask,fmask],'\t');
+    freq = xlsread(ffreq, 'Freq', 'C5');
+elseif nargin == 1
+    mask = dlmread(varargin{1});
+    freq = xlsread(varargin{2}, 'Freq', 'C5');
+end
+
+%c = findstr(fmask,'_');
+%if isempty(c)
+%     cellNum = fmask(1:5);
+%else cellNum = fmask(1:c(1));
+%end
+
+% Calculates the size of the mask in µm²
+
+pmSize = sum(sum(mask)); % size of the mask in pixels
+
+dlg_title = 'Pixel properties';
+prompt = {'Pixel size','Unit (µm2 or nm)'};
+default = {'150', 'nm'};
+lines = 1;
+pixPpt = inputdlg(prompt,dlg_title,lines,default);
+
+pixSize = str2num(pixPpt{1});
+pixUnit = pixPpt{2};
+
+if ~(strcmp(pixUnit,'nm')||strcmp(pixUnit,'µm2'))
+    disp('Invalid unit');
+    return
+elseif strcmp(pixUnit,'nm')
+    pixSize = (pixSize*pixSize)*10.^-6;    % sets pixel size in µm2
+end
+
+mSize = pmSize*pixSize;
+
+% Calculates #ev/min/µm²
+
+if isnumeric(freq)
+    fbm = freq/mSize;
+else disp('Could not calculate the frequency by mask value');
+end
+
+toWrite = cat(2,'Mean frequency / µm²',cell(1,1), num2str(fbm));
+xlswrite(ffreq,  toXrite, 'Freq', 'A6'); 
+
+disp(['#ev/min/µm² : ', num2str(fbm)]);
+
+end
+
+
+
+
+
+
+
+
+

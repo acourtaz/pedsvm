@@ -1,0 +1,82 @@
+function CCSstats
+
+% written by Mo 11/07/2013
+% Gives * CCS lifetimes
+%       * nb of events per CCS
+%       * time between initiation of CCS & 1st event
+%       * time between last event and disappearence of CCS
+%       * time intervals bewtween events of a given CCS
+
+
+[fev,pev] = uigetfile('*.txt;*.trc','File with matrix of events');
+    if ~fev,return,end
+    events = dlmread([pev,fev],'\t');
+    [fCCS,pCCS] = uigetfile('*.txt;*.trc','File with tracked CCS (MIA)');
+    if ~fCCS,return,end
+    CCS = dlmread([pCCS,fCCS],'\t');
+
+    
+events = ev2CCS(events,CCS);
+% TO DO: create an "events" matrix without the line with no CCP assigned
+nbEv = size(events,1);
+CCSm = [];
+CCSm(1,1) = events(1,5);
+
+
+for i = 1:nbEv
+    c = sum((events(i,5) == events(1:i,5))); 
+    if sum((events(i,5) == events(:,5))) == 1 || c == 1 % if i's CCS 
+                                                        %appears only once 
+                                                        % or appears for 
+                                                        % the 1st time
+         CCSv = CCS(:,1) == events(i,5); % vector defined by i's CCS
+         CCSm(i,1) = events(i,5); % CCS number of event i
+         CCSm(i,2) = sum(CCSv); % lifetime of i's CCS in frames
+         CCSm(i,3) = 1; % nb of events on i's CCS (incuding i)
+         startFr = find(CCSv,1,'first');
+         startFr = CCS(startFr,2);
+         endFr = find(CCSv,1,'last');
+         endFr = CCS(startFr,2);
+         %CCSm(i,4) = ;
+    else % if i's CCP appears another
+        j = find(CCSm(1:i-1,1) == events(i,5));
+        CCSm(j,3) = CCSm(j,3)+1;
+    end
+end
+% TO DO: create a CCSm matrix without the zeros due to CCSs with multiple
+% events
+
+
+
+
+         
+        
+        
+%         for j=1:i
+%             if sum((events(j,5) == events(i,5))) == 1 % if it's the first time a CCS that has more than 1 event is listed
+%                  CCSm(i,1) = events(i,5); 
+%                  CCSm(i,2) = sum(CCS(:,1) == events(i,5)); 
+%                  CCSm(i,3) = sum(events(i,5) == events(:,5)); 
+%             end
+%         end
+%     end
+% end
+% 
+
+% % TO DO: create an "events" matrix without the line with no CCP assigned
+% 
+% CCSm = zeros(nbEv,4); %  output matrix with one CCP per line and its stats
+% CCSm(1,1) = events(1,5);
+% for i = 1:nbEv
+%     events(i,7) = sum(CCS(:,1) == events(i,5)); % lifetime of the CCS assigned to event i
+%     events(i,8) = sum(events(i,5) == events(:,5)); % nb of events on i's CCS (incuding i)
+%     
+% end
+% 
+
+
+
+
+
+
+    

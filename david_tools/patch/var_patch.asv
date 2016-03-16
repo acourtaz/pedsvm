@@ -1,0 +1,65 @@
+function [current_Av,var_Av] = var_patch(pulse)
+
+%takes the variance of the normalized current from maximum and later
+%the argument pulse is an array of sweeps (each column)
+%other parameters are number of sweeps for average numAv
+%and number of intervals for variance measures numInt from maximum to end
+
+ptBack1 = 21;
+ptBack2 = 50;
+numAv = 5;
+numInt = 100;
+
+numTraces = floor(size(pulse,2)./numAv);
+
+%finds the maximum current (in absolute values, i.e. the minimum at -80mV)
+
+firstMean = mean(pulse(:,1:numAv),2);
+[c,start] = min(firstMean);
+
+%divides in numInt intervals from 'start' in a log scale
+y = logspace(log10(start),log10(size(firstMean,1)),numInt);
+y_int = round(y);
+
+%computes 'raw' average and variance traces
+current_Av = firstMean(:,ones(1,numTraces));
+var_Av = zeros(size(current_Av));
+for i=1:numTraces
+    current_Av(:,i) = mean(pulse(:,(i-1)*numAv+1:i*numAv),2);
+    loc_Av = (current_Av(:,i));
+    baseline = mean(current_Av(ptBack1:ptBack2,i),1);
+    current_Av(:,i) = current_Av(:,i)-baseline;
+    loc_Av = loc_Av(:,ones(1,numAv));
+    loc_var = (pulse(:,(i-1)*numAv+1:i*numAv)-loc_Av).^2;
+    var_Av(:,i) = mean(loc_var,2);
+end
+figure
+plot(current_Av)
+figure
+plot(var_Av)
+
+%computes averages along the numInt intervals (log distribution)
+var_int = zeros(numInt,numTraces);
+av_int = zeros(numInt,numTraces);
+for j = 1:numTraces
+    for i = 1:numInt-1
+    var_int(i,j) = mean(var_Av(y_int(i)+1:y_int(i+1),j));
+    av_int(i,j) = mean(current_Av(y_int(i)+1:y_int(i+1),j));
+    end
+end
+
+figure
+for j=1:numTraces
+    plot(av_int(:,j),var_int(:,j))
+    hold all
+end
+varIntMean = mean(var_int,2);
+varIntNorm = zeros(size(av_int));
+avIntNorm = zeros(size(av_int));
+for j=1:numTraces
+    avIntNorm(:,j) = av_int(:,j)./av_int(1,j);
+    varIntNorm(:,j) = 
+end
+avNormMean = mean(avIntNorm,2);
+figure
+plot(avNormMean,varIntMean)

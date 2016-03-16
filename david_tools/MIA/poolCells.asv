@@ -1,0 +1,66 @@
+function poolCells
+
+%Pools excel files from cells transfected with the same construct, both
+%data files and rnd files
+%The files need to have the same number of randomized files (usually 200)
+%IMPORTANT: for the function to work, put the Matlab directory in the
+%correct directory, with the files needed, and only them
+%Only works if histograms have been computed. Need to add an option???
+
+list_files = dir;
+TfR5 = []; TfR7 = []; Red = []; Histo = [];
+pool5 = []; pool7 = []; poolR = []; poolH = [];
+for i = 1:size(list_files,1)
+    %Pools the data files into 3 spreadsheets
+    f = list_files(i).name;
+    isdata = ~isempty(strfind(f,'data'));
+    isxls = ~isempty(strfind(f,'xls'));
+    if isdata && isxls
+        [type,sheets] = xlsfinfo(f);
+        for i=1:size(sheets,2)
+            isTfR5 = strfind(sheets{i},'TfR5');
+            isTfR7 = strfind(sheets{i},'TfR7');
+            isDeint = strfind(sheets{i},'deint');
+            isHisto = strfind(sheets{i},'histo');
+            if ~isempty(isTfR5)
+                TfR5 = i;
+            elseif ~isempty(isTfR7)
+                TfR7 = i;
+            elseif ~isempty(isDeint)
+                Red = i;
+                prot = sheets{i}(isDeint-4:isDeint-2);
+            elseif ~isempty(isHisto)
+                Histo = i;
+            end
+        end
+        if ~(TfR5 && TfR7 && Red && Histo)
+            error('One fluo measure sheet is missing')
+        end
+        [dataRed,textRed] = xlsread(f,sheets{Red});
+        [dataTfR5,textTfR5] = xlsread(f,sheets{TfR5});
+        [dataTfR7,textTfR7] = xlsread(f,sheets{TfR7});
+        [dataHisto,textHisto] = xlsread(f,sheets{Histo});
+        pHFirst = dataRed(1,6);
+        evNum = dataRed(8:end,1);
+        ratio7 = dataTfR7(8:end,2);
+        peaks = dataHisto(4:end,5);
+        numEvents = size(dataRed,1)-7;
+        evPool = size(pool5,1) + (1:numEvents)';
+        sortingEv = [evPool,evNum,ratio7,peaks];
+        pool5 = [pool5;sortingEv,dataTfR5(8:end,4:end)];
+        pool7 = [pool7;sortingEv,dataTfR7(8:end,4:end)];
+        poolR = [poolR;sortingEv,dataRed(8:end,4:end)];
+    end
+end
+%sorts the events in terminal and non-terminal, averages them
+isNTerm = (ratio7>=0.6) & (ratio7<=8);
+isTerm = (ratio7>=-10) & (ratio7<=0.4);
+term5 = [isTerm,pool5];
+term5 = sortrows(term5,3);
+[u,start] = max
+
+warning off MATLAB:xlswrite:AddSheet
+xlswrite('pool_trial.xls',pool5,'TfR5 data');
+xlswrite('pool_trial.xls',pool7,'TfR7 data');
+xlswrite('pool_trial.xls',poolR,[prot,' data']);
+        

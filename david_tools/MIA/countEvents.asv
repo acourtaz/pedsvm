@@ -1,0 +1,28 @@
+function count = countEvents(varargin)
+
+%counts the number of events in a .trc file
+
+if nargin == 0
+    [f,p] = uigetfile('*.txt;*.trc','File with matrix of events');
+    if ~f,return,end
+    events = dlmread([p,f],'\t');
+elseif nargin ==1
+    events = dlmread(varargin{1},'\t');
+end
+
+count = 0;
+merge = 0;
+firstEvent = round(events(2,1));
+numberEvents = round(events(end,1));
+for i=firstEvent:numberEvents
+    eventTrack = (events(:,1)==i);
+    [u,start] = max(eventTrack);
+    if u
+        count = count+1;
+        if events(start-1,3) ~= 0
+            merge = merge+1;
+        end
+    end
+end
+count = [
+merge

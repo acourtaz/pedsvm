@@ -1,0 +1,113 @@
+Timings are with Matlab R2007a restarted after changing the files to circumvent Matlab's
+internal caching of M-functions
+See conclusions at end of file
+==========================================================================================
+
+** Cezar's blinking **
+
+Reconnecting trajectories...
+File /home/cezar/Documents/Lab/Microscopy/QdAnalysisAlgorithm/example1/r.MIA/tracking/r_MIA.trc loaded.
+824 trajectories at the beginning.
+171 trajectories after reconnection.
+68 trajectories after filtering the short ones (less than 25 points).
+ 
+Elapsed time is 34.691626 seconds.
+49 domains numbered.
+Peri-domain zone: 2 pixels.
+
+** Cezar's deconnect **
+
+Performing localization of trajectories of molecules...
+Before cutting there are 68 trajectories (6238 points).
+After cutting there are 68 trajectories (6238 points).
+Elapsed time is 0.087363 seconds.
+  
+New trajectories saved in trc/cut
+
+==================================================================================================
+
+** LC's blinking **
+
+Reconnecting trajectories...
+File /home/cezar/Documents/Lab/Microscopy/QdAnalysisAlgorithm/example1/r.MIA/tracking/r_MIA.trc loaded.
+824 trajectories at the beginning.
+171 trajectories after reconnection.
+68 trajectories after filtering the short ones (less than 25 points).
+ 
+Elapsed time is 40.930916 seconds.
+49 domains numbered.
+Peri-domain zone: 2 pixels.
+
+** LC' deconnect **
+
+Performing localization of trajectories of molecules...
+Before cutting there are 68 trajectories (6220 points).
+After cutting there are 150 trajectories (6220 points).
+Elapsed time is 120.139032 seconds.
+  
+New trajectories saved in trc/cut
+
+
+==================================================================================================
+
+** LC' blinking **
+
+Reconnecting trajectories...
+File /home/cezar/Documents/Lab/Microscopy/QdAnalysisAlgorithm/example1/r.MIA/tracking/r_MIA.trc loaded.
+824 trajectories at the beginning.
+171 trajectories after reconnection.
+68 trajectories after filtering the short ones (less than 25 points).
+ 
+Elapsed time is 43.089191 seconds.
+49 domains numbered.
+Peri-domain zone: 2 pixels.
+
+* Cezar's deconnect **
+
+Performing localization of trajectories of molecules...
+Before cutting there are 68 trajectories (6220 points).
+After cutting there are 68 trajectories (6220 points).
+Elapsed time is 0.142102 seconds.
+  
+New trajectories saved in trc/cut
+
+===================================================================================================
+
+** Cezar's blinking **
+
+Reconnecting trajectories...
+File /home/cezar/Documents/Lab/Microscopy/QdAnalysisAlgorithm/example1/r.MIA/tracking/r_MIA.trc loaded.
+824 trajectories at the beginning.
+171 trajectories after reconnection.
+68 trajectories after filtering the short ones (less than 25 points).
+
+Elapsed time is 39.204319 seconds.
+49 domains numbered.
+Peri-domain zone: 2 pixels.
+
+** LC's deconnect **
+
+Performing localization of trajectories of molecules...
+Before cutting there are 68 trajectories (6238 points).
+After cutting there are 151 trajectories (6238 points).
+Elapsed time is 126.793999 seconds.
+  
+New trajectories saved in trc/cut
+
+
+===================================================================================================
+CONCLUSIONS:
+
+Both my routines run faster, HOWEVER:
+
+1) my ** blinking.m ** goes through one iteration more (80, vs 79 in LC's) and generates more points, 
+even though outputs the same number of trajectories:
+
+68 trajectories w/ 6238 points, vs 68 trajectories w/ 6220 points in LC's blinking
+
+2) (SOLVED) my ** deconnect.m ** runs very fast, but DOES NOT SEEM TO DO ANY CUTTING of trajectories !!!
+
+
+
+
+

@@ -1,0 +1,57 @@
+function output = generateRandXYfluo
+
+%generates a range of XY coordinates shifts for randomized data sets
+%that does not make the coordinates fall outside of the image and cell mask
+
+[f,p] = uigetfile('*.txt;*.trc','File with matrix of events');
+if ~f,return,end
+events = dlmread([p,f],'\t');
+
+edge = 7; %minimum distance from edge (to have a 6 pixel annulus)
+distMin = 10; %minimal distance from actual measurement point
+distMax = 40; %maximal distance from actual measurement point
+sizeMovie = [300,256];
+
+%generates the event number column of the output
+evNum = [];
+firstEvent = round(events(2,1));
+numberEvents = round(events(end,1));
+for i=firstEvent:numberEvents
+    eventTrack = (events(:,1)==i);
+    [u,start] = max(eventTrack);
+    if u
+        evNum = [evNum;i];
+    end
+end
+
+numberEvents = size(evNum,1);
+XYshift = zeros(numberEvents,3); %put back to 3 when test bii is done
+Xmax = ceil(max(events(:,3)));
+Ymax = ceil(max(events(:,4)));
+%output = evNum;
+
+for i = 1:numberEvents
+    eventTrack = (events(:,1)==i);
+    [u,start] = max(eventTrack);
+    lenEv = sum(eventTrack);
+    theta = pi*rand;
+    r = distMin + distMax*rand;
+    Xs = r*cos(theta);
+    Ys = r*sin(theta);
+    bii = 0;
+    while (max(events(start:start+lenEv,3))+Xs>Xmax) && (max(events(start:start+lenEv,4))+Ys>Ymax)...
+            && (min(events(start:start+lenEv,3))+Xs< edge) && (min(events(start:start+lenEv,4))+Ys< edge)...
+            && bii < 10
+        theta = 2*
+       pi*rand;
+        r = distMin + distMax*rand;
+        Xs = r*cos(theta);
+        Ys = r*sin(theta);
+        bii = bii+1; %to check how many times it doesn't pass the test
+    end
+    XYshift(i,1) = Xs;
+    XYshift(i,2) = Ys;
+    XYshift(i,3) = bii;
+end
+
+output = cat(2,evNum,XYshift);

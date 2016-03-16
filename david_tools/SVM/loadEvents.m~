@@ -1,0 +1,155 @@
+function loadEvents(action)
+ 
+%Written by DP Adapted from browseEvents2
+%This function shows 'ministacks' around events that can be selected
+%or rejected.
+%Left image shows the average of n (default 5) frames before the event at
+%pH 7.4, to show the preexisting cluster
+%Middle image shows the movie of the event (green channel, pH 5.5)
+%Right image shows the movie of the associated protein (red channel)
+%New for Version 3: Adds graphs for the 4 movies, made after avFluo4
+
+if nargin == 0
+   [stk,stkd] = uigetfile('*.stk','Choose the event stack (pH 5)');
+   if ~stk,return,end
+   M5 = stkread(stk,stkd);
+   pause(0.1)
+   [stk7,stkd7] = uigetfile('*.stk','Choose the cluster stack (pH 7)');
+   if ~stk7,return,end
+   M7 = stkread(stk7,stkd7);
+   pause(0.1)
+   [stkR5,stkdR5] = uigetfile('*.stk','Choose the red channel stack (pH5)');
+   if ~stkR5
+       stkR5 = stk7;
+       stkdR5 = stkd7;
+       stkR7 = stk;
+       stkdR7 = stkd;
+       coeff = [0 1 0 0 0 0 0 0 0 0 0 1 0 0]';
+   else
+       [stkR7,stkdR7] = uigetfile('*.stk','Choose the red channel stack (pH7)');
+       % if ~stkR7,return,end
+       [coFile,coDir] = uigetfile('*.txt','File with alignment coefficients');
+       if ~coFile
+           coeff = [0 1 0 0 0 0 0 0 0 0 0 1 0 0]';
+       else
+           coeff = dlmread([coDir,coFile],'\t');
+       end
+   end
+   MR5 = stkread(stkR5,stkdR5);
+       pause(0.1)
+       prot = stkR5(end-7:end-5);
+       if prot == 'TfR'
+           prot = 'red';
+       end
+       %%%
+   MR7 = stkread(stkR7,stkdR7);
+   if ~(size(coeff)==[14 1]),return,end
+
+   %If the movies do not have the same length, the program will cut the
+   %end of the longer one(s)
+   movieLength = min([size(M5,3),size(M7,3),size(MR5,3),size(MR7,3)]);
+   M7 = M7(:,:,1:movieLength);
+   M5 = M5(:,:,1:movieLength);
+   MR5 = MR5(:,:,1:movieLength);
+   MR7 = MR7(:,:,1:movieLength);
+   [f,p] = uigetfile('*.txt;*.trc','File with matrix of events');
+   if ~f,return,end
+   sTRC = ~isempty(strfind(f,'.trc'));
+   events = dlmread([p,f],'\t');
+   
+   
+   %%% DEFAULT PARAMETERS FOR THE MINISTACKS %%%
+   prompt = {'Size Ministack','Frames before event',...
+       'Frames after start','Frames for average (high pH)'...
+       'Circle radius','Annulus outer radius',...
+       'Lower limit L of the pixel values used for background  (0<= L < H <=1)',...
+       'Higher limit H of the pixel values used for background (0<= L < H <=1)'};
+   [sizeMini before after av_high rCircle rAnn l_per h_per] = ...
+   numinputdlg(prompt,'Parameters for the ministacks',1,[25 20 20 5 3 6 0.2 0.8]);
+   param = [sizeMini before after av_high rCircle rAnn l_per h_per];
+   
+   removed = [];
+   lastEvent = events(end,1);
+   comments = cell(lastEvent,1);
+       
+      
+%%%
+   
+   if events(1,1) == 0
+       firstEvent = events(2,1);
+   else
+       firstEvent = events(1,1);
+   end
+   
+   eventsID = unique(events(:,1));
+   
+   datas = ministack(M5,M7,MR5,MR7,events,param,coeff,sTRC, eventsID(1));
+   for numEv = eventsID(2:end)'
+   mini = ministack(M5,M7,MR5,MR7,events,param,coeff,sTRC, numEv);
+   datas = cat(1, datas, mini);
+   end
+   
+   
+   
+ else
+    eval(action)
+end
+end
+
+function [mini] = ministack (M5, M7, MR5, MR7, events, param, coeff, sTRC, numEv)
+firstEvent = events(2,1);
+lastEvent = events(end,1);
+eventTrack = events(:,1)==numEv;
+[isAnEvent, start] = max(eventTrack);
+
+%calculate the ministacks for the event
+frame = round(events(start,2));
+a = floor(param(1)/2);
+xGreen = round(events(start,4))+sTRC;
+yGreen = round(events(start,3))+sTRC;
+x_miniGreen = max(1,xGreen-a);
+y_miniGreen = max(1,yGreen-a);
+x_maxiGreen = min(size(M5,1), xGreen+a);
+y_maxiGreen = min(size(M5,2), yGreen+a);
+t_mini = max(frame-param(2),1);
+t_maxi = min(frame+param(3), size(M5,3));
+MiniG5 = M5(x_miniGreen:x_maxiGreen,y_miniGreen:y_maxiGreen,t_mini:t_maxi);
+MiniG7 = M7(x_miniGreen:x_maxiGreen,y_miniGreen:y_maxiGreen,t_mini:t_maxi);
+
+if xGreen-a < 1
+    comp = zeros(1-xGreen+a,size(MiniG5,2),size(MiniG5,3));
+    compAv = comp(:,:,1);
+    MiniG5 = cat(1,comp,MiniG5);
+    MiniG7 = cat(1,comp,MiniG7);
+    MiniAv = cat(1,compAv,MiniAv);
+end
+if xGreen+a > size(M5,1)
+    comp = zeros(xGreen+a-size(M5,1),size(MiniG5,2),size(MiniG5,3));
+    compAv = comp(:,:,1);
+    MiniG5 = cat(1,MiniG5,comp);
+    MiniG7 = cat(1,MiniG7,comp);
+    MiniAv = cat(1,MiniAv,compAv);
+end
+if yGreen-a < 1
+    comp = zeros(size(MiniG5,1),1-yGreen+a,size(MiniG5,3));
+    compAv = comp(:,:,1);
+    MiniG5 = cat(2,comp,MiniG5);
+    MiniG7 = cat(2,comp,MiniG7);
+    MiniAv = cat(2,compAv,MiniAv);
+end
+if yGreen+a > size(M5,2)
+    comp = zeros(size(MiniG5,1),yGreen+a-size(M5,2),size(MiniG5,3));
+    compAv = comp(:,:,1);
+    MiniG5 = cat(2,MiniG5,comp);
+    MiniG7 = cat(2,MiniG7,comp);
+    MiniAv = cat(2,MiniAv,compAv);
+end
+
+
+
+
+MiniG5 = reshape(MiniG5,[],1);
+MiniG7 = reshape(MiniG7,[],1);
+mini = cat(1, MiniG5, MiniG7)';
+
+end

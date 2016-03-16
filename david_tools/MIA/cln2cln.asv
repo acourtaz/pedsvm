@@ -1,0 +1,99 @@
+function cln2cln(varargin)
+
+% creates a cln file starting from a later frame than the input cln file
+% ex: creates a cln20 file from a cln5 file
+%(same as doing "cleanup" twice with different "frames to remove" 
+% parameters but while keeping the ID of the structures so as to re-use 
+% removed files after browsing)
+%
+% written by Mo 23/12/2013
+
+if nargin == 0
+    [f,p] = uigetfile('*.txt;*.trc','File with matrix of events');
+    if ~f,return,end
+    ev = dlmread([p,f],'\t');
+elseif nargin ==1
+    ev = dlmread(varargin{1},'\t');
+end
+
+startEvents = [];
+firstEvent = round(ev(2,1));
+lastEvent = round(ev(end,1));
+for i=firstEvent:lastEvent
+    evTrack = (ev(:,1)==i);
+    [u,start] = max(evTrack);
+    if u
+        if ev(1,1)==0
+            startEvents = cat(1,startEvents,ev(start+1,:));
+        else
+            startEvents = cat(1,startEvents,ev(start,:));
+        end
+    end
+end
+
+% nbFr1 = f(strfind(f,'cln')+3);  % initial number of frames removed
+
+dlg_title = 'Parameters';
+prompt = {'Film duration (in frames)','number of frames to remove'};
+default = {num2str(170),num2str(20)};
+lines = 2;
+frParam = inputdlg(prompt,dlg_title,lines,default);
+filmFr = str2double(frParam{1});
+AccFr = str2double(frParam{2}); % First accepted frame
+RejFr = filmFr/2 - AccFr + 1; % First rejected frame
+
+indAcc = find(startEvents(:,2)>=AccFr,1,'first'); 
+firstAcc = startEvents(indAcc,1); % if the input file was written with cleanup5, 
+                                    % then "firstAcc = indAcc"
+firstRow = find(ev(:,1)==firstAcc,1,'first');
+
+indRej = find(startEvents(:,2)>=RejFr,1,'first'); 
+if isempty(indRej)   % no events happen in the last n frames to remove (frParam(2)) 
+    Rej=startEvents(end,1);  % Rej = last event NOT TO reject
+    lastRow = find(ev(:,1)==Rej,1,'last');
+else
+    Rej = startEvents(indRej,1); % Rej = first event TO reject
+    lastRow = find(ev(:,1)==Rej,1,'first')-1;
+end                             
+
+
+
+
+% Writing of the new cln file
+
+cln = ev(firstRow:lastRow,:);
+
+R = strfind(f,'R');
+if R
+    [fcln,pcln] = uiputfile([f(1:R),num2str(AccFr),'.trc']...
+      ,'Where to put the cleaned up event file');  
+else
+    [fcln,pcln] = uiputfile([f(1:strfind(f,'cln')+2),num2str(AccFr),'.trc']...
+        ,'Where to put the cleaned up event file');
+end
+if ischar(fcln) && ischar(pcln)
+   dlmwrite([pcln,fcln],cln,'\t')
+end
+
+% Counting the number of events in the new cln file
+
+startEv = [];
+firstEv = round(cln(2,1));
+lastEv = round(cln(end,1));
+for i=firstEv:lastEv
+    evTr = (cln(:,1)==i);
+    [v,Start] = max(evTr);
+    if v
+        if cln(1,1)==0
+            startEv = cat(1,startEv,cln(Start+1,:));
+        else
+            startEv = cat(1,startEv,cln(Start,:));
+        end
+    end
+end
+
+nbEv=size(startEv,1);
+disp(['There are ',num2str(nbEv),' events in the new cln file'])
+                              
+
+

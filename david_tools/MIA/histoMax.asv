@@ -1,0 +1,19 @@
+function histm = histoMax(varargin)
+
+if nargin == 0
+    [f,p] = uigetfile('*.txt','File with fluo measures');
+    if ~f,return,end
+    fluo = xlsread([p,f],-1);
+elseif nargin == 1
+    fluo = xlsread(varargin{1},-1);
+end
+
+[maxval,maxrow] = max(fluo(:,4:end-5),[],2);
+stdFluo = std(fluo(:,end-4:end),0,2);
+avFluo = mean(fluo(:,end-4:end),2);
+isMax = maxval > 2*stdFluo + avFluo;
+trueMaxRow = isMax.*maxrow;
+x = 1:20;
+histm = histc(trueMaxRow,x);
+figure
+bar(x,histm)

@@ -1,0 +1,491 @@
+function randomFT(nTrials)
+
+%adapted from randomization by David Perrais, 14/09/2011
+%creates a number of randomized traces for determining the significance
+%of a recruitment profile
+%inputs: TfR5.stk, prot.stk, events, (coeff), mask
+%(parameters: bleed(through), pH first frame, time interval (same as
+%(deIntCorrect))
+%last parameter is nTrials, the number of trials for randomization
+%output is an excel file of the nTrials randomized traces
+
+[f,p] = uigetfile('*.txt;*.trc','File with matrix of events');
+if ~f,return,end
+events = dlmread([p,f],'\t');
+sTRC = ~isempty(strfind(f,'.trc'));
+
+pause(0.1)
+[fmask,pmask] = uigetfile('*.txt','Mask of the cell surface');
+if ~fmask
+    warndlg('No mask has been selected for this randomized trial')
+end
+cellMask = dlmread([pmask,fmask]); %not to be confounded with event mask
+
+pause(0.1)
+[stkGre,stkdGre] = uigetfile('*.stk','TfR movie');
+if ~stkGre,return,end
+mG = stkread(stkGre,stkdGre);
+movieSize = size(mG);
+if isempty(cellMask)
+    cellMask = ones(movieSize(1),movieSize(2));
+end
+
+pause(0.1)
+[stkR,stkdR] = uigetfile('*.stk','Movie of red protein');
+if ~stkR,return,end
+mR = stkread(stkR,stkdR);
+cellName = stkR(1:end-4);
+c = strfind(stkR,'_');
+if ~isempty(c)
+    c = c(end)-1;
+else
+    c = 4;
+end
+cellN = stkR(1:c);
+
+%The following lines could be necessary if alignment coefficients are used
+%pause(0.1)
+%[coFile,coDir] = uigetfile('*.txt',...
+%    'File with alignment coefficients for red channel');
+%if ~coFile
+    coeff = [0 1 0 0 0 0 0 0 0 0 0 1 0 0]';
+%else
+%    coeff = dlmread([coDir,coFile],'\t');
+%end
+
+%%% Parameters which can be changed through prompt
+before = 10; %Number of frames measured before vesicle appearance
+after = 30; %Number of frames measured after vesicle appearance
+miniSize = 25; %Size of miniStack used for event measures (odd number)
+Nfr = 5; %Number of frames to evaluate background fluorescence
+thresh = 5; %Threshold (multiples of background SD) to segment image
+pixThresh = 4; %Minimal number of pixels for detectable object
+rCircle = 2.2; %radius (in pixels) of circle used to quantify fluo as minimum
+lper = 0.2;
+hper = 0.8;
+rAn = 3; %Value for region dilatation; must be an integer
+defaults = [before,after,miniSize,Nfr,thresh,pixThresh,rCircle,rAn,lper,hper];
+prompt = {'Number of frames before start of event',...
+    'Number of frames after start of event',...
+    'Size of ministack to find object'...
+    'Number of frames to evaluate background fluorescence',...
+    'Threshold for image segmentation (multiple of background SD)',... 
+    'Minimal number of pixels for an object',...
+    'Circle radius for quantification',...
+    'Mask expansion (in pixels) for background (must be an integer)',...
+    'Lower limit L of the pixel values used for background  (0<= L < H <=1)',...
+    'Higher limit H of the pixel values used for background (0<= L < H <=1)'};
+[before,after,miniSize,Nfr,thresh,pixThresh,rCircle,rAn,lper,hper] = ...
+numinputdlg(prompt,'Parameters for fluorescence measurements',1,defaults);  
+pause(0.1)
+
+ma = floor(miniSize/2); %12 if minisize = 25
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%First part: generating shifted event coordinates (from generateRandXYfluo)
+%adapted from generateRandXYfluo
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+distMin = 10; %minimal distance from actual measurement point
+distMax = 40; %maximal distance from actual measurement point
+
+%generates the event number column of the output
+evNum = [];
+firstEvent = round(events(1,1));
+lastEvent = round(events(end,1));
+for i=firstEvent:lastEvent
+    eventTrack = (events(:,1)==i);
+    [u,start] = max(eventTrack);
+    if u
+        evNum = [evNum;i];
+    end
+end
+
+numberEvents = size(evNum,1);
+XYshift = zeros(numberEvents,2,nTrials);
+Xmax = size(cellMask,1)-ma-1;
+Ymax = size(cellMask,2)-ma-1;
+se = strel('disk',2);
+erMask = imerode(cellMask,se); %the shifted events will not be too close to edge
+mimage(2.*erMask-cellMask)
+line(events(:,3),events(:,4),'lineStyle','none','marker','+',...
+    'markerEdgeColor','r')
+evFluo = [];
+evFluoR = [];
+randFluo = [];
+randFluoR = [];
+a = 0; %token for number of events included in the randomization
+       %less than total number of events if some cannot be shifted
+       %should be very rare if masks are properly made
+for i = 1:numberEvents
+    eventTrack = (events(:,1)==evNum(i)); %Just one line for fluoTubules
+    [u,st] = max(eventTrack);
+    if u
+        %calculates the event mask and quantification like in fluoTubules2
+        %not to be confounded with cell mask 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        frame = round(events(st,2));
+        val = zeros(1,before+after+2);
+        x0 = events(st,3) + sTRC;
+        ix0 = floor(x0);
+        rx0 = round(x0);
+        dx0 = x0-ix0;
+        y0 = events(st,4) + sTRC;
+        iy0 = floor(y0);
+        ry0 = round(y0);
+        dy0 = y0-iy0;
+        xm = min(rx0-1,ma);
+        ym = min(ry0-1,ma);
+        xM = min(size(mG,2)-rx0,ma);
+        yM = min(size(mG,1)-ry0,ma);
+        t_minG = max(frame-before,1);
+        t_maxG = min(frame+after,size(mG,3));
+
+%%%Warning, x coordinate is second dimension!!!
+        miniG = double(mG(ry0-ym:ry0+yM,rx0-xm:rx0+xM,t_minG:t_maxG));
+        miniAv = double(mG(ry0-ym:ry0+yM,rx0-xm:rx0+xM,frame-Nfr:frame-1));
+        miniAv = sum(miniAv,3)./Nfr;
+        miniAv = miniAv(:,:,ones(1,size(miniG,3)));
+        miniGb = miniG - miniAv;
+        miniMask = erMask(ry0-ym:ry0+yM,rx0-xm:rx0+xM); 
+        %to test for shifted event in cell mask
+        if stkR
+        miniR = double(mR(ry0-ym:ry0+yM,rx0-xm:rx0+xM,t_minG:t_maxG));
+        miniAvR = double(mR(ry0-ym:ry0+yM,rx0-xm:rx0+xM,frame-Nfr:frame-1));
+        miniAvR = sum(miniAvR,3)./Nfr;
+        miniAvR = miniAvR(:,:,ones(1,size(miniR,3)));
+        miniRb = miniR - miniAvR;
+        end
+
+        [x,y] = meshgrid(1:size(miniGb,2),1:size(miniGb,1));
+        l_t0 = min(frame,before+1); %local frame start
+        l_x0 = min(x0,ma+1)+dx0;
+        l_y0 = min(y0,ma+1)+dy0;
+%%%Fluo calculations before the event
+        distance = sqrt((x-l_x0).^2 + (y-l_y0).^2);
+        evMask = distance<rCircle;
+        evMask = evMask(:,:,ones(1,size(miniGb,3))); 
+        bck = miniGb(:,:,l_t0-Nfr:l_t0-1);
+        abck = std(bck(:));
+        evThr = abck*thresh;
+%%%Filtering of movie, gaussian filter (default params)
+        hgauss = fspecial('gaussian');
+        miniGf = miniGb;
+        for k=1:size(miniGf,3)
+            miniGf(:,:,k) = imfilter(miniGb(:,:,k),hgauss);
+        end
+        segMiniG = miniGf>evThr; %segmented movie of tubule
+
+        si = l_t0; %token for frames in segmented tubules
+        %tub = 1; 1 if there is a tubule, 0 if a point like structure
+%%%%Calculations for start frame 
+        labMin = bwlabel(segMiniG(:,:,si),4); %4-connected objects
+        prop = regionprops(labMin,'Area');
+        if ~isempty(prop) %To clean up the segmented area
+            for j = 1:size(prop,1)
+                if prop(j).Area < pixThresh %default: 5
+                    labMin(find(labMin==j))=0;
+                end
+            end
+        end
+        prop = regionprops(labMin,'Centroid');
+        if isempty(prop)
+            tub = 0;
+            %val(3) = l_x0;
+            %val(4) = l_y0;
+        else 
+            tub = 1;
+            Ntub = size(prop,1);
+            distub = zeros(1,Ntub);
+            for j = 1:Ntub
+                XY = prop(j).Centroid;
+                distub(j) = sqrt((XY(1)-l_x0)^2+(XY(2)-l_y0)^2);
+            end
+            [dtub,itub] = min(distub);
+            if dtub < 5 %tubule does not move more than 5 pixels
+                l_tub = labMin==itub;
+                l_tub = l_tub(:,:,ones(1,l_t0));
+                evMask(:,:,1:l_t0) = l_tub|evMask(:,:,1:l_t0);
+%Mask is the same for all frames before event
+                %val(2) tubule persistence, in frames
+            end
+        end
+        trXY = [l_x0 l_y0]; % tracking local coordinates
+%%%Calculations for tracked frames
+        si = si+1;        
+        while tub && (si < size(miniG,3))
+        labMin = bwlabel(segMiniG(:,:,si),4); %4-connected objects
+        prop = regionprops(labMin,'Area');
+        if ~isempty(prop) %To clean up the segmented area
+            for j = 1:size(prop,1)
+                if prop(j).Area < pixThresh %default: 5
+                    labMin(find(labMin==j))=0;
+                end
+            end
+        end
+        prop = regionprops(labMin,'all');
+        if isempty(prop)
+            tub = 0;
+        else
+            tub = 1;
+            Ntub = size(prop,1);
+            distub = zeros(1,Ntub);
+            for j = 1:Ntub
+                XY = prop(j).Centroid;
+                distub(j) = sqrt((XY(1)-trXY(end,1))^2+(XY(2)-trXY(end,2))^2);
+            end
+            [dtub,itub] = min(distub);
+            if dtub < 5 %tubule does not move more than 5 pixels
+                trXY = [trXY;prop(itub).Centroid(1) prop(itub).Centroid(2)];
+                distance = sqrt((x-trXY(end,1)).^2 + (y-trXY(end,2)).^2);
+                evMask(:,:,si) = distance<rCircle;
+                evMask(:,:,si) = labMin==itub|evMask(:,:,si);
+
+                %Need to put back right (not local) coordinates!!!
+                si=si+1;
+            else
+                tub = 0;
+            end
+        end
+        end
+        for k = si:size(miniGb,3)
+            evMask(:,:,k) = evMask(:,:,si-1);
+        end
+        SE = strel('disk',rAn); %rAn must be an integer 
+        amask = imdilate(evMask,SE);
+        amask = amask-evMask;
+        valmask = sum(sum(miniG.*evMask))./sum(sum(evMask));
+        aminiG = miniG.*amask;
+%Takes 20-80% middle pixels in 'annulus' region
+        valamask = sum(sum(aminiG))./sum(sum(amask));
+        back = zeros(size(valamask));
+        Pix = size(miniG,1)*size(miniG,2);
+        nPix = zeros(1,size(miniG,3));
+        nLoPix = nPix; nHiPix = nPix;
+        for np = 1:size(miniG,3)
+            nPix(np) = round(sum(sum(amask(:,:,np))));
+            nLoPix(np) = round(nPix(np)*lper);
+            nHiPix(np) = round(nPix(np)*hper);
+        end
+        s_vam = sort(reshape(aminiG,Pix,size(miniG,3)));
+        for q = 1:size(miniG,3)
+back(q) = sum(s_vam(Pix-nPix(q)+nLoPix(q)+1:Pix-nPix(q)+nHiPix(q),q))/(nHiPix(q)-nLoPix(q));
+        end
+        values = valmask - back;
+        %val(2) = si-l_t0; %tubule persistence, in frames
+        %values = sum(sum(miniGb.*evMask)); %Old way (in fluoTubules) Total fluorescence; make average?
+        val(1) = events(st,1);
+        val(before-l_t0+3:before-l_t0+2+size(evMask,3)) = squeeze(values)';
+        if stkR
+            %valR(2) = val(2);
+            valmaskR = sum(sum(miniR.*evMask))./sum(sum(evMask));
+            aminiR = miniR.*amask;
+            valamaskR = sum(sum(miniR.*amask))./sum(sum(amask));
+            backR = zeros(size(valamaskR));
+            %Pix = size(miniG,1)*size(miniG,2);
+            nPir = zeros(1,size(miniR,3));
+            nLoPir = nPir; nHiPir = nPir;
+            for np = 1:size(miniR,3)
+                nPir(np) = round(sum(sum(amask(:,:,np))));
+                nLoPir(np) = round(nPir(np)*lper);
+                nHiPir(np) = round(nPir(np)*hper);
+            end
+            s_vamR = sort(reshape(aminiR,Pix,size(miniR,3)));
+        for q = 1:size(miniR,3)
+backR(q) = sum(s_vamR(Pix-nPir(q)+nLoPir(q)+1:Pix-nPir(q)+nHiPir(q),q))/(nHiPir(q)-nLoPir(q));
+        end
+        valuesR = valmaskR - backR;
+        valR(1) = events(st,1);
+        valR(before-l_t0+3:before-l_t0+2+size(evMask,3)) = squeeze(valuesR)';
+        end
+    evFluo = cat(1,evFluo,val);
+    if stkR
+        evFluoR = cat(1,evFluoR,valR);
+    end
+        
+    nPixEv = sum(sum(evMask(:,:,1)&miniMask));    
+%Makes the shifts and quantifies the fluorescence in shifted events
+    RndFluo = [];
+    RndFluoR = [];
+    for j = 1:nTrials
+        %lenEv = sum(eventTrack)-1; %always 0 in fluoTubules
+        bibi = 1; %condition to stay in the while loop
+        nTimesLoop = 0; %to count the number of choices for a shift >1 if
+        %rejection due to outside of bonds
+        while bibi
+            theta = 2*pi*rand;
+            r = distMin + distMax*rand; %Defaults: distMin=10, distMax=40
+            Xs = r*cos(theta);
+            Ys = r*sin(theta);
+        
+            nTimesLoop = nTimesLoop +1;
+        if (x0+Xs<Xmax)&&(y0+Ys<Ymax)&&(x0+Xs>ma+1)&&(y0+Ys>ma+1)
+            rxS = round(x0+Xs);
+            ryS = round(y0+Ys);
+            miniMaskShift = erMask(ryS-ym:ryS+yM,rxS-xm:rxS+xM);
+            if size(evMask(:,:,1))==size(miniMaskShift)
+                nPixShift = sum(sum(evMask(:,:,1) & miniMaskShift));
+                if nPixShift > nPixEv*0.9
+                    bibi = 0;
+                end
+            end
+        end
+        if nTimesLoop > 100 %If more than 100 trials without hitting the mask, discard event
+            bibi = 0;
+            Xs = 0;
+            Ys = 0;
+        end
+        end
+        XYshift(i,1,j) = Xs;
+        XYshift(i,2,j) = Ys;
+        miniSG = double(mG(ryS-ym:ryS+yM,rxS-xm:rxS+xM,t_minG:t_maxG));
+        valmaskS = sum(sum(miniSG.*evMask))./sum(sum(evMask));
+        aminiSG = miniSG.*amask;
+%Takes 20-80% middle pixels in 'annulus' region
+        valamaskS = sum(sum(aminiSG))./sum(sum(amask));
+        backS = zeros(size(valamaskS));
+        PixS = size(miniSG,1)*size(miniSG,2);
+        nPixS = zeros(1,size(miniSG,3));
+        nLoPixS = nPixS; nHiPixS = nPixS;
+        for np = 1:size(miniSG,3)
+            nPixS(np) = round(sum(sum(amask(:,:,np))));
+            nLoPixS(np) = round(nPixS(np)*lper);
+            nHiPixS(np) = round(nPixS(np)*hper);
+        end
+        s_Sam = sort(reshape(aminiSG,PixS,size(miniSG,3)));
+        for q = 1:size(miniSG,3)
+backS(q) = sum(s_Sam(PixS-nPixS(q)+nLoPixS(q)+1:PixS-nPixS(q)+nHiPixS(q),q))/(nHiPixS(q)-nLoPixS(q));
+        end
+        valShift = valmaskS - backS;
+        valS(1) = events(st,1);
+        valS(before-l_t0+3:before-l_t0+2+size(evMask,3)) = squeeze(valShift)';
+        if stkR
+            miniSR = double(mR(ryS-ym:ryS+yM,rxS-xm:rxS+xM,t_minG:t_maxG));
+            valmaskRS = sum(sum(miniSR.*evMask))./sum(sum(evMask));
+            aminiRS = miniSR.*amask;
+            valamaskRS = sum(sum(miniSR.*amask))./sum(sum(amask));
+            PixRS = size(miniSR,1)*size(miniSR,2);
+            backRS = zeros(size(valamaskRS));
+            nPirS = zeros(1,size(miniSR,3));
+            nLoPirS = nPirS; nHiPirS = nPirS;
+            for np = 1:size(miniSR,3)
+                nPirS(np) = round(sum(sum(amask(:,:,np))));
+                nLoPirS(np) = round(nPirS(np)*lper);
+                nHiPirS(np) = round(nPirS(np)*hper);
+            end
+            s_SamR = sort(reshape(aminiRS,Pix,size(miniSR,3)));
+        for q = 1:size(miniSR,3)
+backRS(q) = sum(s_SamR(PixRS-nPirS(q)+nLoPirS(q)+1:PixRS-nPirS(q)+nHiPirS(q),q))/(nHiPirS(q)-nLoPirS(q));
+        end
+        valuesRS = valmaskRS - backRS;
+        valRS(1) = events(st,1);
+        valRS(before-l_t0+3:before-l_t0+2+size(evMask,3)) = squeeze(valuesRS)';
+        end
+        RndFluo = cat(1,RndFluo,valS);
+        if stkR
+            RndFluoR = cat(1,RndFluoR,valRS);
+        end
+    end
+    %RndFluo = mean(RndFluo);
+    if ~isempty(RndFluo)
+        randFluo = cat(3,randFluo,RndFluo);
+        randFluo = sum(randFluo,3);
+        a = a+1;
+        if stkR
+            randFluoR = cat(3,randFluoR,RndFluoR);
+            randFluoR = sum(randFluoR,3);
+        end
+    end
+    end
+    disp(events(st,1))
+end
+evFluo = mean(evFluo);
+randFluo = randFluo/a;
+randFluo(:,1) = 1:nTrials;
+if stkR
+    evFluoR = mean(evFluoR);
+    randFluoR = randFluoR/a;
+    randFluoR(:,1) = 1:nTrials;
+end
+
+%determines the median, high95% and low95% for the randomized trials
+med = round(nTrials/2);
+hi95 = round(nTrials/20)+1;
+lo95 = nTrials - hi95 + 1;
+sortG = sort(randFluo(:,2:end))';
+envG = cat(2,sortG(:,hi95),sortG(:,med),sortG(:,lo95));
+if stkR
+    sortR = sort(randFluoR(:,2:end))';
+    envR = cat(2,sortR(:,hi95),sortR(:,med),sortR(:,lo95));
+end
+frames = -before:after;
+%envRed = cat(2,sortRed(:,hi95),sortRed(:,med),sortRed(:,lo95));
+
+scrsz = get(0,'ScreenSize');
+figure('name',[cellName(1:end-1),' rnd(',num2str(nTrials),')'],...
+    'position',[scrsz(3)-1100 scrsz(4)-400 1000 300])
+subplot(1,2,1)
+
+plot(frames',evFluo(2:end),'-og','markerfacecolor','g')
+hold on
+plot(frames',envG(:,1),'k','linewidth',2)
+plot(frames',envG(:,2),'k')
+plot(frames',envG(:,3),'k','linewidth',2)
+line([0 0],ylim)
+hold off
+
+subplot(1,2,2)
+plot(frames',evFluoR(2:end),'-or','markerfacecolor','r')
+hold on
+plot(frames',envR(:,1),'k','linewidth',2)
+plot(frames',envR(:,2),'k')
+plot(frames',envR(:,3),'k','linewidth',2)
+line([0 0],ylim)
+hold off
+
+[frand,prand] = uiputfile([cellN,' rand(',num2str(nTrials),').fig'],...
+    'save figure');
+if ischar(frand)&& ischar(prand)
+    saveas(gcf,[prand,frand])
+end
+
+
+titCol = {'frame','low 95%','median','high 95%'};
+cellEnv = cell(size(frames,1),10);
+cellEnv(:,1) = num2cell(frames');
+cellEnv(:,2:4) = num2cell(envG);
+if stkR
+    titCol = cat(2,titCol,{''},titCol);
+    cellEnv(:,6) = num2cell(frames');
+    cellEnv(:,7:9) = num2cell(envR);
+end
+cellEnv = [titCol;cellEnv];
+headerEnv = cell(4,10);
+headerEnv{1,1} = 'Randomized data';
+headerEnv{1,3} = '# Trials:';
+headerEnv{1,4} = nTrials;
+headerEnv(1,5:8) = {'event file:',f,'',date};
+headerEnv(2,1:10) = {'fr_bef','fr_aft','miniSize','fr_av','threshold','nPixels','rCircle','rBack','lo_per','hi_per'};
+params = num2cell([before,after,miniSize,Nfr,thresh,pixThresh,rCircle,rAn,lper,hper]);
+headerEnv(3,1:10) = params;
+headerEnv{4,1} = 'Green channel';
+if stkR
+    headerEnv{4,6} = 'Red channel';
+end
+cellEnv = [headerEnv;cellEnv];
+if stkR
+    sheets = {[cellN,' env'],[cellName,'TfR_rnd'],[cellN,'Red_rnd']};
+else
+    sheets = {[cellN,' env'],[cellName,'TfR_rnd']};
+end
+[frnd,prnd] = uiputfile([f(1:4),'_rand(',num2str(nTrials),').xlsx']...
+      ,'Where to put the randomized trials file');
+if ischar(frnd)&&ischar(prnd)
+    warning off MATLAB:xlswrite:AddSheet
+    xlswrite([prnd,frnd],cellEnv,sheets{1})
+    xlswrite([prnd,frnd],randFluo,sheets{2})
+    if stkR
+        xlswrite([prnd,frnd],randFluoR,sheets{3})
+    end
+end

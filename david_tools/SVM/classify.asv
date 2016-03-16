@@ -1,0 +1,17 @@
+function [] = classify()
+%CLASSIFY Summary of this function goes here
+%   Detailed explanation goes here
+[datas, eventsID, stk] = loadEvents();
+[f, p] = uigetfile('*.mat','Load the SVM model');
+SVMModel = load(f);
+labels = predict(SVMModel, datas);
+
+
+i = find(~labels);
+newEvents = events(i,:);
+stk = stk(end)+1;
+d = strfind(stk,'_');
+d = d(1)-1;
+[f, p] = uiputfile
+
+end

@@ -1,0 +1,14 @@
+function best = bestBIC(trials,choices)
+
+best = cell(1,2);
+happyLists = CalcBIC(choices);
+for i=1:trials
+    happyLists = cat(3,happyLists,CalcBIC(choices));
+end
+[u,start] = max(sum(sum(happyLists)));
+best{1} = u;
+best{2} = happyLists(:,:,start);
+
+%to emulate lists from the bestBIC result (bc), use
+%ranks = 6 - bc{2};
+%for i=1:24,groups(i,1) = Choices(i,ranks(1,i));groups(i,2)=Choices(i,ranks(2,i));end

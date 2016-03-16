@@ -1,0 +1,62 @@
+Cezar blinking:
+Reconnecting trajectories...
+File /home/cezar/Documents/Lab/Microscopy/QdAnalysisAlgorithm/example1/r.MIA/tracking/r_MIA.trc loaded.
+824 trajectories at the beginning.
+171 trajectories after reconnection.
+68 trajectories after filtering the short ones (less than 25 points).
+ 
+Elapsed time is 28.528619 seconds.
+49 domains numbered.
+Peri-domain zone: 2 pixels.
+  
+Cezar deconnect:
+Performing localization of trajectories of molecules...
+Before cutting there are 68 trajectories (6220 points).
+Please wait: deconnecting new trajectories...
+After cutting there are 150 trajectories (6220 points).
+Elapsed time is 0.124734 seconds.
+  
+New trajectories saved in trc/cut  --> load r.MIA.con.syn.trc as CrMIAconsyn in Matlab
+
+
+
+LC's blinking:
+Reconnecting trajectories...
+File /home/cezar/Documents/Lab/Microscopy/QdAnalysisAlgorithm/example1/r.MIA/tracking/r_MIA.trc loaded.
+824 trajectories at the beginning.
+171 trajectories after reconnection.
+68 trajectories after filtering the short ones (less than 25 points).
+ 
+Elapsed time is 38.812419 seconds.
+49 domains numbered.
+Peri-domain zone: 2 pixels.
+  
+Cezar deconnect:
+Performing localization of trajectories of molecules...
+Before cutting there are 68 trajectories (6220 points).
+Please wait: deconnecting new trajectories...
+After cutting there are 150 trajectories (6220 points).
+Elapsed time is 0.058325 seconds.
+  
+New trajectories saved in trc/cut --> load r.MIA.con.syn.trc as LCrMIAconsyn in Matlab
+
+
+>> size(CrMIAconsyn)
+
+ans =
+
+        6220           7
+
+>> size(LCrMIAconsyn)
+
+ans =
+
+        6220           7
+
+>> all(all(CrMIAconsyn==LCrMIAconsyn))
+
+ans =
+
+     1
+
+>> 
